@@ -6,15 +6,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: zmkfirmware/zmk-build-arm:2.5
+      image: zmkfirmware/zmk-build-arm:3.0
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [nice_nano_v2]
+        shield: [my_mouse]
     name: Build
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Cache west modules
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-zephyr-modules
+        uses: actions/cache@v4
         with:
           path: |
             modules/
@@ -22,40 +25,19 @@ jobs:
             zephyr/
             bootloader/
             zmk/
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('manifest-dir/west.yml') }}
+          key: ${{ runner.os }}-zmk-modules-${{ hashFiles('config/west.yml') }}
           restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
+            ${{ runner.os }}-zmk-modules-
       - name: West Init
         run: west init -l config
       - name: West Update
         run: west update
       - name: West Zephyr export
         run: west zephyr-export
-      - name: West Build (KEYBOARD_TITLE Left)
-        run: west build -s zmk/app -b BOARD_NAME -- -DSHIELD=SHIELD_NAME_left -DZMK_CONFIG="${GITHUB_WORKSPACE}/config"
-      - name: KEYBOARD_TITLE DTS File
-        if: ${{ always() }}
-        run: cat -n build/zephyr/BOARD_NAME.dts.pre.tmp
-      - name: KEYBOARD_TITLE Left Kconfig file
-        run: cat build/zephyr/.config | grep -v "^#" | grep -v "^$"
-      - name: Rename zmk.uf2
-        run: cp build/zephyr/zmk.uf2 SHIELD_NAME_left_BOARD_NAME.uf2
-      - name: Archive (KEYBOARD_TITLE Left)
-        uses: actions/upload-artifact@v2
+      - name: West Build
+        run: west build -d build/${{ matrix.board }}/${{ matrix.shield }} -s zmk/app -b ${{ matrix.board }} -- -DSHIELD=${{ matrix.shield }} -DZMK_CONFIG="${GITHUB_WORKSPACE}/config"
+      - name: Archive Firmware
+        uses: actions/upload-artifact@v4
         with:
-          name: firmware
-          path: SHIELD_NAME_left_BOARD_NAME.uf2
-      - name: West Build (KEYBOARD_TITLE Right)
-        run: west build --pristine -s zmk/app -b BOARD_NAME -- -DSHIELD=SHIELD_NAME_right -DZMK_CONFIG="${GITHUB_WORKSPACE}/config"
-
-      - name: KEYBOARD_TITLE Right Kconfig file
-        run: cat build/zephyr/.config | grep -v "^#" | grep -v "^$"
-      - name: Rename zmk.uf2
-        run: cp build/zephyr/zmk.uf2 SHIELD_NAME_right_BOARD_NAME.uf2
-      - name: Archive (KEYBOARD_TITLE Right)
-        uses: actions/upload-artifact@v2
-        with:
-          name: firmware
-          path: SHIELD_NAME_right_BOARD_NAME.uf2
+          name: firmware-${{ matrix.board }}-${{ matrix.shield }}
+          path: build/${{ matrix.board }}/${{ matrix.shield }}/zephyr/zmk.uf2
